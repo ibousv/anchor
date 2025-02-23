@@ -40,7 +40,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "polaris",
-    'anchor.apps.MyAppConfig'
+    'anchor.apps.AnchorConfig'
 ]
 
 MIDDLEWARE = [
