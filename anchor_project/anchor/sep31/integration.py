@@ -17,36 +17,43 @@ class AnchorCrossBorderPayment(SEP31ReceiverIntegration):
         **kwargs: Dict,
     ):
 
-        # retrieve fee and send it to the anchor
-        sending_user = user_for_id(params.get("sender_id"))
-        receiving_user = user_for_id(params.get("receiver_id"))
-        if not sending_user or not sending_user.kyc_approved:
-            return {"error": "customer_info_needed", "type": "sep31-sender"}
-        if not receiving_user or not receiving_user.kyc_approved:
-            return {"error": "customer_info_needed", "type": "sep31-receiver"}
-        transaction_fields = params.get("fields", {}).get("transaction")
-        if not transaction_fields:
-            return {
-                "error": "transaction_info_needed",
-                "fields": {
-                    "transaction": {
-                        "routing_number": {
-                            "description": "routing number of the destination bank account"
-                        },
-                        "account_number": {
-                            "description": "bank account number of the destination"
-                        },
-                    }
-                }
-            }
+
         try:
-            verify_bank_account(
-                transaction_fields.get("routing_number"),
-                transaction_fields.get("account_number")
-            )
-        except ValueError:
-            return {"error": "invalid routing or account number"}
-        sending_user.add_transaction(transaction)
-        receiving_user.add_transaction(transaction)
-
-
+                
+            asset = Asset.objects.get(code=params['asset_code'])
+            
+            # fee = # deduce from quote_id
+            # Send fee to anchor's main account via Stellar transaction
+            # fee transaction
+            stellar_server = Server(horizon_url=env.HORIZON_URI)
+               
+            fee_transaction = (
+                TransactionBuilder(
+                    source_account=source_keypair.public_key,
+                    network_passphrase=Network.TESTNET_NETWORK_PASSPHRASE,
+                    base_fee=100,
+                    )
+                    .append_payment_op(
+                        destination=anchor_keypair.public_key,
+                        amount=str(fee),
+                        asset_code=asset.code,
+                        asset_issuer=asset.issuer,
+                    )
+                    .set_timeout(30)
+                    .build()
+                )
+                
+            fee_transaction.sign(source_keypair)
+            fee_transaction_envelope = fee_transaction.to_xdr()
+                
+               
+            response = stellar_server.submit_transaction(fee_transaction_envelope)
+            if response.get('hash') is None:
+                return {"error": "Fee transaction failed"}
+                
+            # Process the main payment
+            # Between the source and desination accounts
+            return {}
+                
+        except Exception as e:
+            return {"error": str(e)}
